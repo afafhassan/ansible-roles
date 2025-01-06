@@ -1,0 +1,53 @@
+---
+# tasks file for sonarqube_role
+#- name: Update apt cache
+#  apt:
+#    update_cache: yes
+
+- name: Install required packages
+  apt:
+    name:
+      - openjdk-11-jdk
+      - unzip
+      - wget
+    state: present
+
+- name: Create SonarQube user
+  user:
+    name: sonar
+    system: yes
+    shell: /bin/bash
+    create_home: yes
+
+- name: Download SonarQube
+  get_url:
+    url: "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.9.3.79811.zip"
+    dest: /tmp/sonarqube.zip
+
+- name: Unpack SonarQube
+  unarchive:
+    src: /tmp/sonarqube.zip
+    dest: /opt/
+    remote_src: yes
+
+- name: Set permissions for SonarQube
+  file:
+    path: /opt/sonarqube-9.9.3.79811
+    owner: sonar
+    group: sonar
+    recurse: yes
+
+- name: Configure SonarQube service
+  template:
+    src: sonar.service.j2
+    dest: /etc/systemd/system/sonar.service
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Enable and start SonarQube service
+  systemd:
+    name: sonar
+    enabled: yes
+    state: started
