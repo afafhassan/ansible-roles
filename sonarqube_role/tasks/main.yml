@@ -1,53 +1,154 @@
----
-# tasks file for sonarqube_role
-#- name: Update apt cache
+
+# tasks/main.yml
+
+#- name: Update and upgrade the system
 #  apt:
 #    update_cache: yes
+#    upgrade: dist
 
-- name: Install required packages
+- name: Install OpenJDK 17
   apt:
-    name:
-      - openjdk-11-jdk
-      - unzip
-      - wget
+    name: openjdk-17-jdk
     state: present
 
-- name: Create SonarQube user
-  user:
-    name: sonar
-    system: yes
-    shell: /bin/bash
-    create_home: yes
+- name: Add PostgreSQL APT repository
+  copy:
+    dest: /etc/apt/sources.list.d/pgdg.list
+    content: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+
+- name: Add PostgreSQL signing key
+  shell: |
+    wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | tee /etc/apt/trusted.gpg.d/pgdg.asc
+  args:
+    creates: /etc/apt/trusted.gpg.d/pgdg.asc
+
+- name: Update APT cache and install PostgreSQL
+  apt:
+    update_cache: yes
+    name:
+      - postgresql
+      - postgresql-contrib
+    state: present
+
+- name: Start and enable PostgreSQL
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Configure PostgreSQL for SonarQube
+  become: yes
+  become_user: postgres
+  block:
+    - name: Create PostgreSQL user "sonar"
+      postgresql_user:
+        name: sonar
+        password: sonar
+
+    - name: Create SonarQube database
+      postgresql_db:
+        name: sonarqube
+        owner: sonar
 
 - name: Download SonarQube
   get_url:
-    url: "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.9.3.79811.zip"
+    url: "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-25.1.0.102122.zip"
     dest: /tmp/sonarqube.zip
 
-- name: Unpack SonarQube
+- name: Extract SonarQube
   unarchive:
     src: /tmp/sonarqube.zip
     dest: /opt/
     remote_src: yes
 
-- name: Set permissions for SonarQube
+- name: Move SonarQube to target directory
+  command: mv /opt/sonarqube-25.1.0.102122 /opt/sonarqube
+
+- name: Create SonarQube system user
+  user:
+    name: sonarqube
+    system: yes
+    home: /opt/sonarqube
+    shell: /usr/sbin/nologin
+
+- name: Set permissions on SonarQube directory
   file:
-    path: /opt/sonarqube-9.9.3.79811
-    owner: sonar
-    group: sonar
+    path: /opt/sonarqube
+    owner: sonarqube
+    group: sonarqube
     recurse: yes
 
-- name: Configure SonarQube service
-  template:
-    src: sonar.service.j2
-    dest: /etc/systemd/system/sonar.service
+- name: Configure SonarQube properties
+  lineinfile:
+    path: /opt/sonarqube/conf/sonar.properties
+    line: "{{ item }}"
+    create: yes
+  loop:
+    - "sonar.jdbc.username=sonar"
+    - "sonar.jdbc.password=sonar"
+    - "sonar.jdbc.url=jdbc:postgresql://localhost/sonarqube"
 
-- name: Reload systemd
+- name: Create SonarQube systemd service
+  copy:
+    dest: /etc/systemd/system/sonarqube.service
+    content: |
+      [Unit]
+      Description=SonarQube service
+      After=syslog.target network.target
+
+      [Service]
+      Type=forking
+      ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+      ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+      User=sonarqube
+      Group=sonarqube
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd and start SonarQube
   systemd:
     daemon_reload: yes
-
-- name: Enable and start SonarQube service
-  systemd:
-    name: sonar
-    enabled: yes
+    name: sonarqube
     state: started
+    enabled: yes
+
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Configure Nginx as reverse proxy for SonarQube
+  copy:
+    dest: /etc/nginx/sites-available/sonarqube.conf
+    content: |
+      server {
+        listen 80;
+        server_name sonarqube.local;
+        access_log /var/log/nginx/sonar.access.log;
+        error_log /var/log/nginx/sonar.error.log;
+        proxy_buffers 16 64k;
+        proxy_buffer_size 128k;
+
+        location / {
+          proxy_pass http://127.0.0.1:9000;
+          proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+          proxy_redirect off;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto http;
+        }
+      }
+
+- name: Enable Nginx configuration
+  file:
+    src: /etc/nginx/sites-available/sonarqube.conf
+    dest: /etc/nginx/sites-enabled/sonarqube.conf
+    state: link
+
+- name: Test and reload Nginx
+  command: nginx -t
+  notify: Reload Nginx
+
