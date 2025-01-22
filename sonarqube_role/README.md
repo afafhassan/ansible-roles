@@ -1,38 +1,30 @@
-Role Name
-=========
+# SonarQube Setup and Configuration Ansible Role
 
-A brief description of the role goes here.
+This Ansible role automates the installation and configuration of SonarQube, PostgreSQL, and Nginx for reverse proxy setup on a target machine. It includes setting up SonarQube with a PostgreSQL backend and configuring Nginx as a reverse proxy for SonarQube.
 
-Requirements
-------------
+## Prerequisites
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+- Ansible installed on your local machine.
+- A target machine running a supported version of Ubuntu/Debian.
+- Sudo or root access on the target machine.
+- Ensure the target machine has at least 2GB of RAM and sufficient disk space.
+- OpenJDK 17 or higher is required for running SonarQube.
 
-Role Variables
---------------
+## Role Variables
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+This role doesn't have any configurable variables by default. You can modify the configuration by changing the appropriate properties directly in the tasks.
 
-Dependencies
-------------
+## Dependencies
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+- None
 
-Example Playbook
-----------------
+## Installation
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
+You can install this role via Ansible Galaxy or manually. Here's how to use it:
 
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
+### Option 1: Clone the repository
 
-License
--------
+Clone the repository to your Ansible project's `roles` directory:
 
-BSD
-
-Author Information
-------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+```bash
+git clone https://example.com/your-ansible-role.git /path/to/your/ansible/project/roles/sonarqube
